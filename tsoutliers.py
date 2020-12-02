@@ -32,7 +32,8 @@ class SmootherAD:
         self.smoother.fit(t, y)
         smoothed_data = self.smoother.predict(t)
 
-        outliers, diff, upper_limit, lower_limit = self.box_method(y, smoothed_data)
+        diff = y - smoothed_data
+        outliers, diff, upper_limit, lower_limit = box_method(diff)
 
         self.smoothed_data = pd.Series(smoothed_data, index=ts.index) + seasonality
 
@@ -68,29 +69,6 @@ class SmootherAD:
         return y, seasonal_flag, seasonality
 
     @staticmethod
-    def box_method(y, smoothed_data, c0=(0.25, 0.75), c1=3):
-        """
-        using box plot method to detect final anomalies
-        :param y: real data
-        :param smoothed_data: data after super smooth
-        :param c0: quantile
-        :param c1:
-        :return:
-        """
-        diff = y - smoothed_data
-
-        quantile_lower = np.quantile(diff, c0[0])
-        quantile_upper = np.quantile(diff, c0[1])
-        iqr = quantile_upper - quantile_lower
-
-        lower_limit = quantile_lower - c1 * iqr
-        upper_limit = quantile_upper + c1 * iqr
-
-        outliers = (diff >= upper_limit) | (diff <= lower_limit)
-
-        return outliers, diff, upper_limit, lower_limit
-
-    @staticmethod
     def plot(ts: pd.Series, smoothed_data: pd.Series, outliers, upper_limit, lower_limit):
         """
         plot the image
@@ -108,6 +86,9 @@ class SmootherAD:
         plt.plot(smoothed_data, label='smoothed data')
         plt.plot(ts[outliers], 'ro', label='outliers')
 
+        diff = ts - smoothed_data
+        plt.plot(diff, label='diff')
+
         y_upper = np.ones(len(ts)) * upper_limit
         y_lower = np.ones(len(ts)) * lower_limit
         plt.plot(ts.index, y_upper, 'r--', label='upper limit')
@@ -115,6 +96,27 @@ class SmootherAD:
 
         plt.legend()
         plt.show()
+
+
+def box_method(diff, c0=(0.25, 0.75), c1=3):
+    """
+    using box plot method to detect final anomalies
+    :param diff: data to detect anomaly
+    :param c0: 25% and 75% quantile
+    :param c1:
+    :return:
+    """
+
+    quantile_lower = np.quantile(diff, c0[0])
+    quantile_upper = np.quantile(diff, c0[1])
+    iqr = quantile_upper - quantile_lower
+
+    lower_limit = quantile_lower - c1 * iqr
+    upper_limit = quantile_upper + c1 * iqr
+
+    outliers = (diff >= upper_limit) | (diff <= lower_limit)
+
+    return outliers, diff, upper_limit, lower_limit
 
 
 if __name__ == '__main__':
