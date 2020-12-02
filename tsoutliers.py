@@ -1,6 +1,5 @@
 import numpy as np
 import pandas as pd
-from statsmodels.tsa.api import STL
 
 from supersmoother.supersmoother import SuperSmoother
 
@@ -8,20 +7,26 @@ from supersmoother.supersmoother import SuperSmoother
 class SmootherAD:
 
     def __init__(self, seasadj=False):
+        """
+        :param seasadj: True or False, 是否需要季节性调整，对于明显的周期性数据，应设置为True
+        """
         self.seasadj = seasadj
         self.smoother = SuperSmoother()
 
+        self.data = None
         self.smoothed_data = None
+        self.upper_limit, self.lower_limit = None, None
+        self.outliers = None
 
-    def detect(self, ts: pd.Series, is_plot=False):
+    def detect(self, ts: pd.Series) -> np.ndarray:
         """
-        :param ts: time series to detect anomalies
-        :param is_plot:
-        :return:
+        :param ts: pd.Series类型，索引为时间
+        :return outliers: numpy.ndarray 异常点的布尔索引，通过ts[outliers]得到最后的异常点
         """
         if not isinstance(ts, pd.Series):
             raise ValueError("'ts' should be pandas.Series, you got: {}".format(type(ts)))
 
+        self.data = ts
         y = ts.values
         t = np.arange(len(ts))
 
@@ -33,12 +38,11 @@ class SmootherAD:
         smoothed_data = self.smoother.predict(t)
 
         diff = y - smoothed_data
-        outliers, diff, upper_limit, lower_limit = box_method(diff)
+        outliers, upper_limit, lower_limit = box_method(diff)
 
+        self.outliers = outliers
         self.smoothed_data = pd.Series(smoothed_data, index=ts.index) + seasonality
-
-        if is_plot:
-            self.plot(ts, self.smoothed_data, outliers, upper_limit, lower_limit)
+        self.upper_limit, self.lower_limit = upper_limit, lower_limit
 
         return outliers
 
@@ -48,6 +52,8 @@ class SmootherAD:
         :param ts:
         :return:
         """
+        from statsmodels.tsa.api import STL
+
         seasonal_flag = False
         seasonality = [0 for _ in range(len(ts))]
         y = ts.values
@@ -68,31 +74,31 @@ class SmootherAD:
 
         return y, seasonal_flag, seasonality
 
-    @staticmethod
-    def plot(ts: pd.Series, smoothed_data: pd.Series, outliers, upper_limit, lower_limit):
+    def plot(self, verbose=False):
         """
-        plot the image
-        :param ts:
-        :param smoothed_data:
-        :param outliers:
-        :param upper_limit:
-        :param lower_limit:
+        :param verbose: True or False，是否画出经过supersmoother平滑后的曲线以及上下界
         :return:
         """
         import matplotlib.pyplot as plt
         plt.rc('figure', figsize=(12, 5))
 
+        ts, outliers = self.data, self.outliers
+
         plt.plot(ts, label='data')
-        plt.plot(smoothed_data, label='smoothed data')
         plt.plot(ts[outliers], 'ro', label='outliers')
 
-        diff = ts - smoothed_data
-        plt.plot(diff, label='diff')
+        if verbose:
+            smoothed_data = self.smoothed_data
+            plt.plot(smoothed_data, label='smoothed data')
 
-        y_upper = np.ones(len(ts)) * upper_limit
-        y_lower = np.ones(len(ts)) * lower_limit
-        plt.plot(ts.index, y_upper, 'r--', label='upper limit')
-        plt.plot(ts.index, y_lower, 'r--', label='lower limit')
+            diff = ts - smoothed_data
+            plt.plot(diff, label='diff')
+
+            upper_limit, lower_limit = self.upper_limit, self.lower_limit
+            y_upper = np.ones(len(ts)) * upper_limit
+            y_lower = np.ones(len(ts)) * lower_limit
+            plt.plot(ts.index, y_upper, 'r--', label='upper limit')
+            plt.plot(ts.index, y_lower, 'r--', label='lower limit')
 
         plt.legend()
         plt.show()
@@ -100,9 +106,9 @@ class SmootherAD:
 
 def box_method(diff, c0=(0.25, 0.75), c1=3):
     """
-    using box plot method to detect final anomalies
+    box plot方法去做异常检测
     :param diff: data to detect anomaly
-    :param c0: 25% and 75% quantile
+    :param c0: 25%和75% 分位数
     :param c1:
     :return:
     """
@@ -116,7 +122,7 @@ def box_method(diff, c0=(0.25, 0.75), c1=3):
 
     outliers = (diff >= upper_limit) | (diff <= lower_limit)
 
-    return outliers, diff, upper_limit, lower_limit
+    return outliers, upper_limit, lower_limit
 
 
 if __name__ == '__main__':
@@ -130,4 +136,5 @@ if __name__ == '__main__':
 
     # anomaly detection
     ad = SmootherAD(seasadj=True)
-    outliers = ad.detect(ts, is_plot=True)
+    outliers = ad.detect(ts)
+    ad.plot()
