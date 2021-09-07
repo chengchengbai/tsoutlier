@@ -24,7 +24,7 @@ class SmootherAD:
         :return outliers: numpy.ndarray 异常点的布尔索引，通过ts[outliers]得到最后的异常点
         """
         if not isinstance(ts, pd.Series):
-            raise ValueError("'ts' should be pandas.Series, you got: {}".format(type(ts)))
+            raise TypeError("'ts' should be pandas.Series, you got: {}".format(type(ts)))
 
         self.data = ts
         y = ts.values
